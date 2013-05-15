@@ -257,8 +257,8 @@ class PersistentCollection implements BaseCollection, Selectable
      */
     public function setOwner($document, array $mapping)
     {
-        $this->owner            = $document;
-        $this->mapping          = $mapping;
+        $this->owner = $document;
+        $this->mapping = $mapping;
         $this->backRefFieldName = $mapping['inversedBy'] ?: $mapping['mappedBy'];
     }
 
@@ -717,7 +717,7 @@ class PersistentCollection implements BaseCollection, Selectable
         $expression      = $criteria->getWhereExpression();
         $expression      = $expression ? $builder->andX($expression, $ownerExpression) : $ownerExpression;
 
-        $criteria->where($expression);
+        $criteria->andWhere($expression);
 
         return $repository->matching($criteria);
     }
