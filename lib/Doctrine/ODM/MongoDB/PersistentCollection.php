@@ -48,6 +48,14 @@ class PersistentCollection implements BaseCollection, Selectable
     private $owner;
 
     /**
+     * The name of the field on the target entities that points to the owner
+     * of the collection. This is only set if the association is bi-directional.
+     *
+     * @var string
+     */
+    private $backRefFieldName;
+
+    /**
      * @var array
      */
     private $mapping;
@@ -245,12 +253,13 @@ class PersistentCollection implements BaseCollection, Selectable
      * describes the association between the owner and the elements of the collection.
      *
      * @param object $document
-     * @param AssociationMapping $mapping
+     * @param array  $mapping
      */
     public function setOwner($document, array $mapping)
     {
-        $this->owner = $document;
-        $this->mapping = $mapping;
+        $this->owner            = $document;
+        $this->mapping          = $mapping;
+        $this->backRefFieldName = $mapping['inversedBy'] ?: $mapping['mappedBy'];
     }
 
     /**
@@ -702,6 +711,13 @@ class PersistentCollection implements BaseCollection, Selectable
 
         // Reuse the repository
         $repository = $this->dm->getRepository(get_class($this->owner));
+
+        $builder         = Criteria::expr();
+        $ownerExpression = $builder->eq($this->backRefFieldName, $this->owner);
+        $expression      = $criteria->getWhereExpression();
+        $expression      = $expression ? $builder->andX($expression, $ownerExpression) : $ownerExpression;
+
+        $criteria->where($expression);
 
         return $repository->matching($criteria);
     }
