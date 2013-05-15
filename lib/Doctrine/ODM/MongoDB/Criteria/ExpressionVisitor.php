@@ -24,9 +24,6 @@ use Doctrine\Common\Collections\Expr\CompositeExpression;
 use Doctrine\Common\Collections\Expr\ExpressionVisitor;
 use Doctrine\Common\Collections\Expr\Value;
 use Doctrine\MongoDB\Query\Builder;
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadataFactory;
-use Doctrine\ODM\MongoDB\Query\Expr;
 
 /**
  * @since       1.0
@@ -41,14 +38,14 @@ class MongoExpressionVisitor extends ExpressionVisitor
      * @var array
      */
     protected $comparisonTable = array(
-        '='   => '',
-        '<>'  => 'ne',
+        '='   => 'equals',
+        '<>'  => 'notEqual',
         '<'   => 'lt',
         '<='  => 'lte',
         '>'   => 'gt',
         '>='  => 'gte',
         'IN'  => 'in',
-        'NIN' => 'nin'
+        'NIN' => 'notIn'
     );
 
     /**
@@ -57,30 +54,11 @@ class MongoExpressionVisitor extends ExpressionVisitor
     protected $queryBuilder;
 
     /**
-     * @var ClassMetadata
-     */
-    protected $metadata;
-
-    /**
-     * @var ClassMetadataFactory
-     */
-    protected $metadataFactory;
-
-    /**
-     * @var Expr
-     */
-    protected $expr;
-
-    /**
      * @param Builder $queryBuilder
-     * @param ClassMetadata $metadata
-     * @param ClassMetadataFactory $metadataFactory
      */
-    public function __construct(Builder $queryBuilder, ClassMetadata $metadata, ClassMetadataFactory $metadataFactory)
+    public function __construct(Builder $queryBuilder)
     {
         $this->queryBuilder    = $queryBuilder;
-        $this->metadata        = $metadata;
-        $this->metadataFactory = $metadataFactory;
     }
 
     /**
@@ -93,13 +71,9 @@ class MongoExpressionVisitor extends ExpressionVisitor
         $value    = $this->dispatch($comparison->getValue());
 
         if (isset($this->comparisonTable[$operator])) {
-            if ($operator === Comparison::EQ) {
-                return $this->getExpr()->field($field)
-                                       ->equals($value);
-            } else {
-                return $this->getExpr()->field($field)
-                                       ->operator($this->comparisonTable[$operator], $value);
-            }
+            $method = $this->comparisonTable[$operator];
+            $this->queryBuilder->field($field)
+                               ->{$method}($value);
         }
     }
 
@@ -124,22 +98,10 @@ class MongoExpressionVisitor extends ExpressionVisitor
 
         switch ($expr->getType()) {
             case CompositeExpression::TYPE_AND:
-                return $this->getExpr()->addAnd($children);
+                return $this->queryBuilder->addAnd($children);
 
             case CompositeExpression::TYPE_OR:
-                return $this->getExpr()->addOr($children);
+                return $this->queryBuilder->addOr($children);
         }
-    }
-
-    /**
-     * @return Expr
-     */
-    private function getExpr()
-    {
-        if (null === $this->expr) {
-            $this->expr = $this->queryBuilder->expr();
-        }
-
-        return $this->expr;
     }
 }

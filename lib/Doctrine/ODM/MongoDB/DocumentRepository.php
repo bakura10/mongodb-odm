@@ -261,13 +261,17 @@ class DocumentRepository implements ObjectRepository, Selectable
     public function matching(Criteria $criteria)
     {
         $queryBuilder = $this->dm->createQueryBuilder($this->documentName);
-        $visitor      = new MongoExpressionVisitor(
-            $queryBuilder,
-            $this->getClassMetadata(),
-            $this->getDocumentManager()->getMetadataFactory()
-        );
+        $visitor      = new MongoExpressionVisitor($queryBuilder);
 
-        $expr = $visitor->dispatch($criteria->getWhereExpression());
-        //$queryBuilder->
+        $queryBuilder = $visitor->dispatch($criteria->getWhereExpression());
+        $queryBuilder->limit($criteria->getMaxResults())
+                     ->skip($criteria->getFirstResult());
+
+        foreach ($criteria->getOrderings() as $field => $sortOrder) {
+            $queryBuilder->sort($field, $sortOrder);
+        }
+
+        return $queryBuilder->getQuery()
+                            ->execute();
     }
 }
