@@ -20,8 +20,10 @@
 namespace Doctrine\ODM\MongoDB;
 
 use Doctrine\Common\Collections\Collection as BaseCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\Criteria;
+use Doctrine\Common\Collections\Selectable;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\Proxy\Proxy;
 
 /**
  * A PersistentCollection represents a collection of elements that have persistent state.
@@ -30,7 +32,7 @@ use Doctrine\ODM\MongoDB\Proxy\Proxy;
  * @author      Jonathan H. Wage <jonwage@gmail.com>
  * @author      Roman Borschel <roman@code-factory.org>
  */
-class PersistentCollection implements BaseCollection
+class PersistentCollection implements BaseCollection, Selectable
 {
     /**
      * A snapshot of the collection at the moment it was fetched from the database.
@@ -40,8 +42,14 @@ class PersistentCollection implements BaseCollection
      */
     private $snapshot = array();
 
+    /**
+     * @var object
+     */
     private $owner;
 
+    /**
+     * @var array
+     */
     private $mapping;
 
     /**
@@ -69,14 +77,14 @@ class PersistentCollection implements BaseCollection
     /**
      * The DocumentManager that manages the persistence of the collection.
      *
-     * @var Doctrine\ODM\MongoDB\DocumentManager
+     * @var DocumentManager
      */
     private $dm;
 
     /**
      * The UnitOfWork that manages the persistence of the collection.
      *
-     * @var Doctrine\ODM\MongoDB\UnitOfWork
+     * @var UnitOfWork
      */
     private $uow;
 
@@ -111,7 +119,7 @@ class PersistentCollection implements BaseCollection
     /**
      * Sets the document manager and unit of work (used during merge operations).
      *
-     * @param type $dm
+     * @param DocumentManager $dm
      */
     public function setDocumentManager(DocumentManager $dm)
     {
@@ -676,5 +684,25 @@ class PersistentCollection implements BaseCollection
         $this->snapshot = array();
 
         $this->changed();
+    }
+
+    /**
+     * Selects all elements from a selectable that match the expression and
+     * returns a new collection containing these elements.
+     *
+     * @param Criteria $criteria
+     *
+     * @return Collection
+     */
+    function matching(Criteria $criteria)
+    {
+        if ($this->isDirty) {
+            $this->initialize();
+        }
+
+        // Reuse the repository
+        $repository = $this->dm->getRepository(get_class($this->owner));
+
+        return $repository->matching($criteria);
     }
 }

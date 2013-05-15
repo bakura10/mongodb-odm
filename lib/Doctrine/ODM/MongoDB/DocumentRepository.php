@@ -19,6 +19,7 @@
 
 namespace Doctrine\ODM\MongoDB;
 
+use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Criteria;
 use Doctrine\Common\Collections\Selectable;
 use Doctrine\Common\Persistence\ObjectRepository;
@@ -271,7 +272,8 @@ class DocumentRepository implements ObjectRepository, Selectable
             $queryBuilder->sort($field, $sortOrder);
         }
 
-        return $queryBuilder->getQuery()
-                            ->execute();
+        // @TODO: wrap around a specialized Collection for efficient count on large collections
+
+        return new ArrayCollection($queryBuilder->getQuery()->execute());
     }
 }
