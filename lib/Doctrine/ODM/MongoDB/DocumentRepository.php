@@ -23,7 +23,10 @@ use Doctrine\Common\Collections\Criteria;
 use Doctrine\Common\Collections\Selectable;
 use Doctrine\Common\Persistence\ObjectRepository;
 use Doctrine\Common\Util\Inflector;
+use Doctrine\ODM\MongoDB\Collection\QueryCollection;
+use Doctrine\ODM\MongoDB\Criteria\MongoExpressionVisitor;
 use Doctrine\ODM\MongoDB\Mapping\MappingException;
+use Doctrine\ODM\MongoDB\Query\Builder;
 
 /**
  * An DocumentRepository serves as a repository for documents with generic as well as
@@ -251,9 +254,17 @@ class DocumentRepository implements ObjectRepository, Selectable
 
     /**
      * {@inheritDoc}
+     * @return QueryCollection
      */
     public function matching(Criteria $criteria)
     {
-        // TODO: Implement matching() method.
+        $queryBuilder = $this->dm->createQueryBuilder($this->documentName);
+        $visitor      = new MongoExpressionVisitor(
+            $queryBuilder,
+            $this->getClassMetadata(),
+            $this->getDocumentManager()->getMetadataFactory()
+        );
+
+        return $visitor->dispatch($criteria->getWhereExpression());
     }
 }

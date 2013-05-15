@@ -20,6 +20,9 @@
 namespace Doctrine\ODM\MongoDB;
 
 use Doctrine\Common\Collections\Collection as BaseCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\Criteria;
+use Doctrine\Common\Collections\Selectable;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Proxy\Proxy;
 
@@ -30,7 +33,7 @@ use Doctrine\ODM\MongoDB\Proxy\Proxy;
  * @author      Jonathan H. Wage <jonwage@gmail.com>
  * @author      Roman Borschel <roman@code-factory.org>
  */
-class PersistentCollection implements BaseCollection
+class PersistentCollection implements BaseCollection, Selectable
 {
     /**
      * A snapshot of the collection at the moment it was fetched from the database.
@@ -40,8 +43,14 @@ class PersistentCollection implements BaseCollection
      */
     private $snapshot = array();
 
+    /**
+     * @var object
+     */
     private $owner;
 
+    /**
+     * @var array
+     */
     private $mapping;
 
     /**
@@ -69,14 +78,14 @@ class PersistentCollection implements BaseCollection
     /**
      * The DocumentManager that manages the persistence of the collection.
      *
-     * @var Doctrine\ODM\MongoDB\DocumentManager
+     * @var DocumentManager
      */
     private $dm;
 
     /**
      * The UnitOfWork that manages the persistence of the collection.
      *
-     * @var Doctrine\ODM\MongoDB\UnitOfWork
+     * @var UnitOfWork
      */
     private $uow;
 
@@ -100,6 +109,12 @@ class PersistentCollection implements BaseCollection
      */
     private $hints = array();
 
+    /**
+     * @param Collection $coll
+     * @param DocumentManager $dm
+     * @param UnitOfWork $uow
+     * @param $cmd
+     */
     public function __construct(BaseCollection $coll, DocumentManager $dm, UnitOfWork $uow, $cmd)
     {
         $this->coll = $coll;
@@ -111,11 +126,12 @@ class PersistentCollection implements BaseCollection
     /**
      * Sets the document manager and unit of work (used during merge operations).
      *
-     * @param type $dm
+     * @param DocumentManager $dm
+     * @return void
      */
     public function setDocumentManager(DocumentManager $dm)
     {
-        $this->dm = $dm;
+        $this->dm  = $dm;
         $this->uow = $dm->getUnitOfWork();
     }
 
@@ -123,6 +139,7 @@ class PersistentCollection implements BaseCollection
      * Sets the array of raw mongo data that will be used to initialize this collection.
      *
      * @param array $mongoData
+     * @return void $mongoData
      */
     public function setMongoData(array $mongoData)
     {
@@ -132,7 +149,7 @@ class PersistentCollection implements BaseCollection
     /**
      * Gets the array of raw mongo data that will be used to initialize this collection.
      *
-     * @return array $mongoData
+     * @return array
      */
     public function getMongoData()
     {
@@ -143,6 +160,7 @@ class PersistentCollection implements BaseCollection
      * Set hints to account for during reconstitution/lookup of the documents.
      *
      * @param array $hints
+     * @return void
      */
     public function setHints(array $hints)
     {
@@ -162,6 +180,8 @@ class PersistentCollection implements BaseCollection
     /**
      * Initializes the collection by loading its contents from the database
      * if the collection is not yet initialized.
+     *
+     * @return void
      */
     public function initialize()
     {
@@ -190,25 +210,6 @@ class PersistentCollection implements BaseCollection
         }
     }
 
-    /**
-     * Marks this collection as changed/dirty.
-     */
-    private function changed()
-    {
-        if ($this->isDirty) {
-            return;
-        }
-
-        $this->isDirty = true;
-
-        if ($this->dm &&
-            $this->mapping !== null &&
-            $this->mapping['isOwningSide'] &&
-            $this->owner &&
-            $this->dm->getClassMetadata(get_class($this->owner))->isChangeTrackingNotify()) {
-            $this->uow->scheduleForDirtyCheck($this->owner);
-        }
-    }
 
     /**
      * Gets a boolean flag indicating whether this collection is dirty which means
@@ -225,6 +226,7 @@ class PersistentCollection implements BaseCollection
      * Sets a boolean flag, indicating whether this collection is dirty.
      *
      * @param boolean $dirty Whether the collection should be marked dirty or not.
+     * @return void
      */
     public function setDirty($dirty)
     {
@@ -237,33 +239,37 @@ class PersistentCollection implements BaseCollection
      * describes the association between the owner and the elements of the collection.
      *
      * @param object $document
-     * @param AssociationMapping $mapping
+     * @param array  $mapping
      */
     public function setOwner($document, array $mapping)
     {
-        $this->owner = $document;
+        $this->owner   = $document;
         $this->mapping = $mapping;
     }
 
     /**
      * INTERNAL:
      * Tells this collection to take a snapshot of its current state.
+     *
+     * @return void
      */
     public function takeSnapshot()
     {
         $this->snapshot = $this->coll->toArray();
-        $this->isDirty = false;
+        $this->isDirty  = false;
     }
 
     /**
      * INTERNAL:
      * Clears the internal snapshot information and sets isDirty to true if the collection
      * has elements.
+     *
+     * @return void
      */
     public function clearSnapshot()
     {
         $this->snapshot = array();
-        $this->isDirty = $this->count() ? true : false;
+        $this->isDirty  = $this->count() ? true : false;
     }
 
     /**
@@ -312,24 +318,23 @@ class PersistentCollection implements BaseCollection
         return $this->owner;
     }
 
+    /**
+     * @return array
+     */
     public function getMapping()
     {
         return $this->mapping;
-    }
-
-    public function getTypeClass()
-    {
-        return $this->typeClass;
     }
 
     /**
      * Sets the initialized flag of the collection, forcing it into that state.
      *
      * @param boolean $bool
+     * @return void
      */
     public function setInitialized($bool)
     {
-        $this->initialized = $bool;
+        $this->initialized = (bool) $bool;
     }
 
     /**
@@ -342,14 +347,32 @@ class PersistentCollection implements BaseCollection
         return $this->initialized;
     }
 
-    /** {@inheritdoc} */
+    /**
+     * {@inheritDoc}
+     */
+    function matching(Criteria $criteria)
+    {
+        if ($this->isDirty()) {
+            $this->initialize();
+        }
+
+        if ($this->isInitialized()) {
+            return $this->coll->matching($criteria);
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function first()
     {
         $this->initialize();
         return $this->coll->first();
     }
 
-    /** {@inheritdoc} */
+    /**
+     * {@inheritdoc}
+     */
     public function last()
     {
         $this->initialize();
@@ -580,6 +603,7 @@ class PersistentCollection implements BaseCollection
      *
      * @internal Tried to implement Serializable first but that did not work well
      *           with circular references. This solution seems simpler and works well.
+     * @return array
      */
     public function __sleep()
     {
@@ -624,6 +648,9 @@ class PersistentCollection implements BaseCollection
         return $this->remove($offset);
     }
 
+    /**
+     * @return int|string
+     */
     public function key()
     {
         return $this->coll->key();
@@ -676,5 +703,27 @@ class PersistentCollection implements BaseCollection
         $this->snapshot = array();
 
         $this->changed();
+    }
+
+    /**
+     * Marks this collection as changed/dirty.
+     *
+     * @return void
+     */
+    private function changed()
+    {
+        if ($this->isDirty) {
+            return;
+        }
+
+        $this->isDirty = true;
+
+        if ($this->dm &&
+            $this->mapping !== null &&
+            $this->mapping['isOwningSide'] &&
+            $this->owner &&
+            $this->dm->getClassMetadata(get_class($this->owner))->isChangeTrackingNotify()) {
+            $this->uow->scheduleForDirtyCheck($this->owner);
+        }
     }
 }

@@ -74,6 +74,11 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
      */
     private $requireIndexes;
 
+    /**
+     * @param DocumentManager $dm
+     * @param \Doctrine\MongoDB\Collection $cmd
+     * @param null $documentName
+     */
     public function __construct(DocumentManager $dm, $cmd, $documentName = null)
     {
         $this->dm   = $dm;

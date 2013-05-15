@@ -115,14 +115,14 @@ class DocumentPersister
      */
     public function __construct(PersistenceBuilder $pb, DocumentManager $dm, EventManager $evm, UnitOfWork $uow, HydratorFactory $hydratorFactory, ClassMetadata $class, $cmd)
     {
-        $this->pb = $pb;
-        $this->dm = $dm;
-        $this->evm = $evm;
-        $this->cmd = $cmd;
-        $this->uow = $uow;
+        $this->pb              = $pb;
+        $this->dm              = $dm;
+        $this->evm             = $evm;
+        $this->cmd             = $cmd;
+        $this->uow             = $uow;
         $this->hydratorFactory = $hydratorFactory;
-        $this->class = $class;
-        $this->collection = $dm->getDocumentCollection($class->name);
+        $this->class           = $class;
+        $this->collection      = $dm->getDocumentCollection($class->name);
     }
 
     /**
@@ -382,7 +382,7 @@ class DocumentPersister
     public function loadAll(array $criteria = array(), array $orderBy = null, $limit = null, $offset = null)
     {
         $criteria = $this->prepareQuery($criteria);
-        $cursor = $this->collection->find($criteria);
+        $cursor   = $this->collection->find($criteria);
 
         if (null !== $orderBy) {
             $cursor->sort($orderBy);
