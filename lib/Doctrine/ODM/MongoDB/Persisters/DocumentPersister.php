@@ -25,14 +25,10 @@ use Doctrine\ODM\MongoDB\UnitOfWork;
 use Doctrine\ODM\MongoDB\Hydrator\HydratorFactory;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Mapping\Types\Type;
-use Doctrine\Common\Collections\Collection;
-use Doctrine\ODM\MongoDB\Events;
-use Doctrine\ODM\MongoDB\Event\OnUpdatePreparedArgs;
 use Doctrine\ODM\MongoDB\MongoDBException;
 use Doctrine\ODM\MongoDB\LockException;
 use Doctrine\ODM\MongoDB\PersistentCollection;
 use Doctrine\ODM\MongoDB\Query\Query;
-use Doctrine\MongoDB\ArrayIterator;
 use Doctrine\ODM\MongoDB\Proxy\Proxy;
 use Doctrine\ODM\MongoDB\LockMode;
 use Doctrine\ODM\MongoDB\Cursor;
@@ -53,49 +49,42 @@ class DocumentPersister
     /**
      * The PersistenceBuilder instance.
      *
-     * @var Doctrine\ODM\MongoDB\Persisters\PersistenceBuilder
+     * @var PersistenceBuilder
      */
     private $pb;
 
     /**
      * The DocumentManager instance.
      *
-     * @var Doctrine\ODM\MongoDB\DocumentManager
+     * @var DocumentManager
      */
     private $dm;
 
     /**
      * The EventManager instance
      *
-     * @var Doctrine\Common\EventManager
+     * @var EventManager
      */
     private $evm;
 
     /**
      * The UnitOfWork instance.
      *
-     * @var Doctrine\ODM\MongoDB\UnitOfWork
+     * @var UnitOfWork
      */
     private $uow;
 
     /**
-     * The Hydrator instance
-     *
-     * @var Doctrine\ODM\MongoDB\Hydrator
-     */
-    private $hydrator;
-
-    /**
      * The ClassMetadata instance for the document type being persisted.
      *
-     * @var Doctrine\ODM\MongoDB\Mapping\ClassMetadata
+     * @var ClassMetadata
      */
     private $class;
 
     /**
      * The MongoCollection instance for this document.
      *
-     * @var Doctrine\ODM\MongoDB\MongoCollection
+     * @var MongoCollection
      */
     private $collection;
 
@@ -107,18 +96,6 @@ class DocumentPersister
     private $queuedInserts = array();
 
     /**
-     * Documents to be updated, used in executeReferenceUpdates() method
-     * @var array
-     */
-    private $documentsToUpdate = array();
-
-    /**
-     * Fields to update, used in executeReferenceUpdates() method
-     * @var array
-     */
-    private $fieldsToUpdate = array();
-
-    /**
      * Mongo command prefix
      *
      * @var string
@@ -128,13 +105,13 @@ class DocumentPersister
     /**
      * Initializes a new DocumentPersister instance.
      *
-     * @param Doctrine\ODM\MongoDB\Persisters\PersistenceBuilder $pb
-     * @param Doctrine\ODM\MongoDB\DocumentManager $dm
-     * @param Doctrine\Common\EventManager $evm
-     * @param Doctrine\ODM\MongoDB\UnitOfWork $uow
-     * @param Doctrine\ODM\MongoDB\Hydrator\HydratorFactory $hydratorFactory
-     * @param Doctrine\ODM\MongoDB\Mapping\ClassMetadata $class
-     * @param string $cmd
+     * @param PersistenceBuilder $pb
+     * @param DocumentManager    $dm
+     * @param EventManager       $evm
+     * @param UnitOfWork         $uow
+     * @param HydratorFactory    $hydratorFactory
+     * @param ClassMetadata      $class
+     * @param string             $cmd
      */
     public function __construct(PersistenceBuilder $pb, DocumentManager $dm, EventManager $evm, UnitOfWork $uow, HydratorFactory $hydratorFactory, ClassMetadata $class, $cmd)
     {
@@ -148,11 +125,18 @@ class DocumentPersister
         $this->collection = $dm->getDocumentCollection($class->name);
     }
 
+    /**
+     * @return array
+     */
     public function getInserts()
     {
         return $this->queuedInserts;
     }
 
+    /**
+     * @param $document
+     * @return bool
+     */
     public function isQueuedForInsert($document)
     {
         return isset($this->queuedInserts[spl_object_hash($document)]) ? true : false;
@@ -163,6 +147,7 @@ class DocumentPersister
      * The document remains queued until {@link executeInserts} is invoked.
      *
      * @param object $document The document to queue for insertion.
+     * @return void
      */
     public function addInsert($document)
     {
@@ -172,7 +157,7 @@ class DocumentPersister
     /**
      * Gets the ClassMetadata instance of the document class this persister is used for.
      *
-     * @return Doctrine\ODM\MongoDB\Mapping\ClassMetadata
+     * @return ClassMetadata
      */
     public function getClassMetadata()
     {
@@ -186,8 +171,8 @@ class DocumentPersister
      * If no inserts are queued, invoking this method is a NOOP.
      *
      * @param array $options Array of options to be used with batchInsert()
-     * @return array An array of any generated post-insert IDs. This will be an empty array
-     *               if the document class does not use the IDENTITY generation strategy.
+     * @return array|void An array of any generated post-insert IDs. This will be an empty array
+     *                    if the document class does not use the IDENTITY generation strategy.
      */
     public function executeInserts(array $options = array())
     {
@@ -259,6 +244,8 @@ class DocumentPersister
      *
      * @param object $document
      * @param array $options Array of options to be used with update()
+     * @throws \Doctrine\ODM\MongoDB\LockException
+     * @return void
      */
     public function update($document, array $options = array())
     {
@@ -316,6 +303,8 @@ class DocumentPersister
      *
      * @param mixed $document
      * @param array $options Array of options to be used with remove()
+     * @throws \Doctrine\ODM\MongoDB\LockException
+     * @return void
      */
     public function delete($document, array $options = array())
     {
@@ -339,10 +328,10 @@ class DocumentPersister
      *
      * @param array $id The identifier of the document.
      * @param object $document The document to refresh.
+     * @return void
      */
     public function refresh($id, $document)
     {
-        $class = $this->dm->getClassMetadata(get_class($document));
         $data = $this->collection->findOne(array('_id' => $id));
         $data = $this->hydratorFactory->hydrate($document, $data);
         $this->uow->setOriginalDocumentData($document, $data);
@@ -357,6 +346,7 @@ class DocumentPersister
      * @param array $hints Hints for document creation.
      * @param int $lockMode
      * @param array $sort
+     * @throws \Doctrine\ODM\MongoDB\LockException
      * @return object The loaded and managed document instance or NULL if the document can not be found.
      * @todo Check identity map? loadById method? Try to guess whether $criteria is the id?
      */
@@ -383,7 +373,10 @@ class DocumentPersister
     /**
      * Loads a list of documents by a list of field criteria.
      *
-     * @param array $criteria
+     * @param array    $criteria
+     * @param array    $orderBy
+     * @param int|null $limit
+     * @param int|null $offset
      * @return array
      */
     public function loadAll(array $criteria = array(), array $orderBy = null, $limit = null, $offset = null)
@@ -409,9 +402,9 @@ class DocumentPersister
     /**
      * Wraps the supplied base cursor as an ODM one.
      *
-     * @param Doctrine\MongoDB\Cursor $cursor The base cursor
-     *
+     * @param BaseCursor $cursor The base cursor
      * @return Cursor An ODM cursor
+     * @return \Doctrine\ODM\MongoDB\Cursor|\Doctrine\ODM\MongoDB\LoggableCursor
      */
     private function wrapCursor(BaseCursor $cursor)
     {
@@ -458,6 +451,7 @@ class DocumentPersister
      *
      * @param object $document
      * @param int $lockMode
+     * @return void
      */
     public function lock($document, $lockMode)
     {
@@ -472,6 +466,7 @@ class DocumentPersister
      * Releases any lock that exists on this document.
      *
      * @param object $document
+     * @return void
      */
     public function unlock($document)
     {
@@ -511,8 +506,9 @@ class DocumentPersister
      *
      * @param Iterator $collection
      * @param string $fieldName
-     * @param Closure|boolean $primer
+     * @param \Closure|boolean $primer
      * @param array $hints
+     * @return void
      */
     public function primeCollection(Iterator $collection, $fieldName, $primer, array $hints = array())
     {
@@ -579,6 +575,7 @@ class DocumentPersister
      * Loads a PersistentCollection data. Used in the initialize() method.
      *
      * @param PersistentCollection $collection
+     * @return void
      */
     public function loadCollection(PersistentCollection $collection)
     {
@@ -599,162 +596,6 @@ class DocumentPersister
                     }
                 }
                 break;
-        }
-    }
-
-    private function loadEmbedManyCollection(PersistentCollection $collection)
-    {
-        $embeddedDocuments = $collection->getMongoData();
-        $mapping = $collection->getMapping();
-        $owner = $collection->getOwner();
-        if ($embeddedDocuments) {
-            foreach ($embeddedDocuments as $key => $embeddedDocument) {
-                $className = $this->dm->getClassNameFromDiscriminatorValue($mapping, $embeddedDocument);
-                $embeddedMetadata = $this->dm->getClassMetadata($className);
-                $embeddedDocumentObject = $embeddedMetadata->newInstance();
-
-                $data = $this->hydratorFactory->hydrate($embeddedDocumentObject, $embeddedDocument);
-                $this->uow->registerManaged($embeddedDocumentObject, null, $data);
-                $this->uow->setParentAssociation($embeddedDocumentObject, $mapping, $owner, $mapping['name'].'.'.$key);
-                if ($mapping['strategy'] === 'set') {
-                    $collection->set($key, $embeddedDocumentObject);
-                } else {
-                    $collection->add($embeddedDocumentObject);
-                }
-            }
-        }
-    }
-
-    private function loadReferenceManyCollectionOwningSide(PersistentCollection $collection)
-    {
-        $hints = $collection->getHints();
-        $mapping = $collection->getMapping();
-        $cmd = $this->cmd;
-        $groupedIds = array();
-
-        $sorted = isset($mapping['sort']) && $mapping['sort'];
-
-        foreach ($collection->getMongoData() as $key => $reference) {
-            if (isset($mapping['simple']) && $mapping['simple']) {
-                $className = $mapping['targetDocument'];
-                $mongoId = $reference;
-            } else {
-                $className = $this->dm->getClassNameFromDiscriminatorValue($mapping, $reference);
-                $mongoId = $reference[$cmd . 'id'];
-            }
-            $id = $this->dm->getClassMetadata($className)->getPHPIdentifierValue($mongoId);
-            if (!$id) {
-                continue;
-            }
-
-            // create a reference to the class and id
-            $reference = $this->dm->getReference($className, $id);
-
-            // no custom sort so add the references right now in the order they are embedded
-            if ( ! $sorted) {
-                if ($mapping['strategy'] === 'set') {
-                    $collection->set($key, $reference);
-                } else {
-                    $collection->add($reference);
-                }
-            }
-
-            // only query for the referenced object if it is not already initialized or the collection is sorted
-            if (($reference instanceof Proxy && ! $reference->__isInitialized__) || $sorted) {
-                $groupedIds[$className][$id] = $mongoId;
-            }
-        }
-        foreach ($groupedIds as $className => $ids) {
-            $class = $this->dm->getClassMetadata($className);
-            $mongoCollection = $this->dm->getDocumentCollection($className);
-            $criteria = array_merge(
-                array('_id' => array($cmd . 'in' => $ids)),
-                $this->dm->getFilterCollection()->getFilterCriteria($class),
-                isset($mapping['criteria']) ? $mapping['criteria'] : array()
-            );
-            $cursor = $mongoCollection->find($criteria);
-            if (isset($mapping['sort'])) {
-                $cursor->sort($mapping['sort']);
-            }
-            if (isset($mapping['limit'])) {
-                $cursor->limit($mapping['limit']);
-            }
-            if (isset($mapping['skip'])) {
-                $cursor->skip($mapping['skip']);
-            }
-            if (isset($hints[Query::HINT_SLAVE_OKAY])) {
-                $cursor->slaveOkay(true);
-            }
-            $documents = $cursor->toArray();
-            foreach ($documents as $documentData) {
-                $document = $this->uow->getById((string) $documentData['_id'], $class->rootDocumentName);
-                $data = $this->hydratorFactory->hydrate($document, $documentData);
-                $this->uow->setOriginalDocumentData($document, $data);
-                $document->__isInitialized__ = true;
-                if ($sorted) {
-                    $collection->add($document);
-                }
-            }
-        }
-    }
-
-    private function loadReferenceManyCollectionInverseSide(PersistentCollection $collection)
-    {
-        $hints = $collection->getHints();
-        $mapping = $collection->getMapping();
-        $owner = $collection->getOwner();
-        $ownerClass = $this->dm->getClassMetadata(get_class($owner));
-        $targetClass = $this->dm->getClassMetadata($mapping['targetDocument']);
-        $mappedByMapping = $targetClass->fieldMappings[$mapping['mappedBy']];
-        $mappedByFieldName = isset($mappedByMapping['simple']) && $mappedByMapping['simple'] ? $mapping['mappedBy'] : $mapping['mappedBy'].'.$id';
-        $criteria = array_merge(
-            array($mappedByFieldName => $ownerClass->getIdentifierObject($owner)),
-            isset($mapping['criteria']) ? $mapping['criteria'] : array()
-        );
-        $qb = $this->dm->createQueryBuilder($mapping['targetDocument'])
-            ->setQueryArray($criteria);
-
-        if (isset($mapping['sort'])) {
-            $qb->sort($mapping['sort']);
-        }
-        if (isset($mapping['limit'])) {
-            $qb->limit($mapping['limit']);
-        }
-        if (isset($mapping['skip'])) {
-            $qb->skip($mapping['skip']);
-        }
-        if (isset($hints[Query::HINT_SLAVE_OKAY])) {
-            $qb->slaveOkay(true);
-        }
-        $documents = $qb->getQuery()->execute()->toArray();
-        foreach ($documents as $key => $document) {
-          if ($mapping['strategy'] === 'set') {
-            $collection->set($key, $document);
-          } else {
-            $collection->add($document);
-          }
-        }
-    }
-
-    private function loadReferenceManyWithRepositoryMethod(PersistentCollection $collection)
-    {
-        $mapping = $collection->getMapping();
-        $cursor = $this->dm->getRepository($mapping['targetDocument'])->$mapping['repositoryMethod']($collection->getOwner());
-        if (isset($mapping['sort']) && $mapping['sort']) {
-            $cursor->sort($mapping['sort']);
-        }
-        if (isset($mapping['limit']) && $mapping['limit']) {
-            $cursor->limit($mapping['limit']);
-        }
-        if (isset($mapping['skip']) && $mapping['skip']) {
-            $cursor->skip($mapping['skip']);
-        }
-        if (isset($hints[Query::HINT_SLAVE_OKAY])) {
-            $cursor->slaveOkay(true);
-        }
-        $documents = $cursor->toArray();
-        foreach ($documents as $document) {
-            $collection->add($document);
         }
     }
 
@@ -844,6 +685,178 @@ class DocumentPersister
             $prepared = $this->convertTypes($prepared);
         }
         return $prepared;
+    }
+
+    /**
+     * @param PersistentCollection $collection
+     * @return void
+     */
+    private function loadEmbedManyCollection(PersistentCollection $collection)
+    {
+        $embeddedDocuments = $collection->getMongoData();
+        $mapping = $collection->getMapping();
+        $owner = $collection->getOwner();
+        if ($embeddedDocuments) {
+            foreach ($embeddedDocuments as $key => $embeddedDocument) {
+                $className = $this->dm->getClassNameFromDiscriminatorValue($mapping, $embeddedDocument);
+                $embeddedMetadata = $this->dm->getClassMetadata($className);
+                $embeddedDocumentObject = $embeddedMetadata->newInstance();
+
+                $data = $this->hydratorFactory->hydrate($embeddedDocumentObject, $embeddedDocument);
+                $this->uow->registerManaged($embeddedDocumentObject, null, $data);
+                $this->uow->setParentAssociation($embeddedDocumentObject, $mapping, $owner, $mapping['name'].'.'.$key);
+                if ($mapping['strategy'] === 'set') {
+                    $collection->set($key, $embeddedDocumentObject);
+                } else {
+                    $collection->add($embeddedDocumentObject);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param PersistentCollection $collection
+     * @return void
+     */
+    private function loadReferenceManyCollectionOwningSide(PersistentCollection $collection)
+    {
+        $hints = $collection->getHints();
+        $mapping = $collection->getMapping();
+        $cmd = $this->cmd;
+        $groupedIds = array();
+
+        $sorted = isset($mapping['sort']) && $mapping['sort'];
+
+        foreach ($collection->getMongoData() as $key => $reference) {
+            if (isset($mapping['simple']) && $mapping['simple']) {
+                $className = $mapping['targetDocument'];
+                $mongoId = $reference;
+            } else {
+                $className = $this->dm->getClassNameFromDiscriminatorValue($mapping, $reference);
+                $mongoId = $reference[$cmd . 'id'];
+            }
+            $id = $this->dm->getClassMetadata($className)->getPHPIdentifierValue($mongoId);
+            if (!$id) {
+                continue;
+            }
+
+            // create a reference to the class and id
+            $reference = $this->dm->getReference($className, $id);
+
+            // no custom sort so add the references right now in the order they are embedded
+            if ( ! $sorted) {
+                if ($mapping['strategy'] === 'set') {
+                    $collection->set($key, $reference);
+                } else {
+                    $collection->add($reference);
+                }
+            }
+
+            // only query for the referenced object if it is not already initialized or the collection is sorted
+            if (($reference instanceof Proxy && ! $reference->__isInitialized__) || $sorted) {
+                $groupedIds[$className][$id] = $mongoId;
+            }
+        }
+        foreach ($groupedIds as $className => $ids) {
+            $class = $this->dm->getClassMetadata($className);
+            $mongoCollection = $this->dm->getDocumentCollection($className);
+            $criteria = array_merge(
+                array('_id' => array($cmd . 'in' => $ids)),
+                $this->dm->getFilterCollection()->getFilterCriteria($class),
+                isset($mapping['criteria']) ? $mapping['criteria'] : array()
+            );
+            $cursor = $mongoCollection->find($criteria);
+            if (isset($mapping['sort'])) {
+                $cursor->sort($mapping['sort']);
+            }
+            if (isset($mapping['limit'])) {
+                $cursor->limit($mapping['limit']);
+            }
+            if (isset($mapping['skip'])) {
+                $cursor->skip($mapping['skip']);
+            }
+            if (isset($hints[Query::HINT_SLAVE_OKAY])) {
+                $cursor->slaveOkay(true);
+            }
+            $documents = $cursor->toArray();
+            foreach ($documents as $documentData) {
+                $document = $this->uow->getById((string) $documentData['_id'], $class->rootDocumentName);
+                $data = $this->hydratorFactory->hydrate($document, $documentData);
+                $this->uow->setOriginalDocumentData($document, $data);
+                $document->__isInitialized__ = true;
+                if ($sorted) {
+                    $collection->add($document);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param PersistentCollection $collection
+     * @return void
+     */
+    private function loadReferenceManyCollectionInverseSide(PersistentCollection $collection)
+    {
+        $hints = $collection->getHints();
+        $mapping = $collection->getMapping();
+        $owner = $collection->getOwner();
+        $ownerClass = $this->dm->getClassMetadata(get_class($owner));
+        $targetClass = $this->dm->getClassMetadata($mapping['targetDocument']);
+        $mappedByMapping = $targetClass->fieldMappings[$mapping['mappedBy']];
+        $mappedByFieldName = isset($mappedByMapping['simple']) && $mappedByMapping['simple'] ? $mapping['mappedBy'] : $mapping['mappedBy'].'.$id';
+        $criteria = array_merge(
+            array($mappedByFieldName => $ownerClass->getIdentifierObject($owner)),
+            isset($mapping['criteria']) ? $mapping['criteria'] : array()
+        );
+        $qb = $this->dm->createQueryBuilder($mapping['targetDocument'])
+            ->setQueryArray($criteria);
+
+        if (isset($mapping['sort'])) {
+            $qb->sort($mapping['sort']);
+        }
+        if (isset($mapping['limit'])) {
+            $qb->limit($mapping['limit']);
+        }
+        if (isset($mapping['skip'])) {
+            $qb->skip($mapping['skip']);
+        }
+        if (isset($hints[Query::HINT_SLAVE_OKAY])) {
+            $qb->slaveOkay(true);
+        }
+        $documents = $qb->getQuery()->execute()->toArray();
+        foreach ($documents as $key => $document) {
+            if ($mapping['strategy'] === 'set') {
+                $collection->set($key, $document);
+            } else {
+                $collection->add($document);
+            }
+        }
+    }
+
+    /**
+     * @param PersistentCollection $collection
+     * @return void
+     */
+    private function loadReferenceManyWithRepositoryMethod(PersistentCollection $collection)
+    {
+        $mapping = $collection->getMapping();
+        $cursor = $this->dm->getRepository($mapping['targetDocument'])->$mapping['repositoryMethod']($collection->getOwner());
+        if (isset($mapping['sort']) && $mapping['sort']) {
+            $cursor->sort($mapping['sort']);
+        }
+        if (isset($mapping['limit']) && $mapping['limit']) {
+            $cursor->limit($mapping['limit']);
+        }
+        if (isset($mapping['skip']) && $mapping['skip']) {
+            $cursor->skip($mapping['skip']);
+        }
+        if (isset($hints[Query::HINT_SLAVE_OKAY])) {
+            $cursor->slaveOkay(true);
+        }
+        $documents = $cursor->toArray();
+        foreach ($documents as $document) {
+            $collection->add($document);
+        }
     }
 
     /**
