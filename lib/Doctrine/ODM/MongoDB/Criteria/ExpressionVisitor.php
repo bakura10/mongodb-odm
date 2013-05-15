@@ -122,8 +122,7 @@ class MongoExpressionVisitor extends ExpressionVisitor
             $children[] = $this->dispatch($child);
         }
 
-        switch ($expr->getType())
-        {
+        switch ($expr->getType()) {
             case CompositeExpression::TYPE_AND:
                 return $this->getExpr()->addAnd($children);
 

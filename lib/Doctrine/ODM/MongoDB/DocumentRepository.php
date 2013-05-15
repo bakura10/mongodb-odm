@@ -101,9 +101,10 @@ class DocumentRepository implements ObjectRepository, Selectable
      * @param string|object $id The identifier
      * @param int $lockMode
      * @param int $lockVersion
+     * @return object The document.
+     *
      * @throws Mapping\MappingException
      * @throws LockException
-     * @return object The document.
      */
     public function find($id, $lockMode = LockMode::NONE, $lockVersion = null)
     {
@@ -185,12 +186,13 @@ class DocumentRepository implements ObjectRepository, Selectable
      *
      * @param $method
      * @param $arguments
+     * @return array|object The found document/documents.
+     *
      * @throws MongoDBException
      * @throws MongoDBException
      * @throws \BadMethodCallException If the method called is an invalid find* method
      *                                 or no find* method at all and therefore an invalid
      *                                 method call.
-     * @return array|object The found document/documents.
      */
     public function __call($method, $arguments)
     {
@@ -265,6 +267,7 @@ class DocumentRepository implements ObjectRepository, Selectable
             $this->getDocumentManager()->getMetadataFactory()
         );
 
-        return $visitor->dispatch($criteria->getWhereExpression());
+        $expr = $visitor->dispatch($criteria->getWhereExpression());
+        //$queryBuilder->
     }
 }
