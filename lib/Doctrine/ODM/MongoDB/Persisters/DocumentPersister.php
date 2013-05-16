@@ -19,6 +19,7 @@
 
 namespace Doctrine\ODM\MongoDB\Persisters;
 
+use Doctrine\Common\Collections\Criteria;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\Common\EventManager;
 use Doctrine\ODM\MongoDB\UnitOfWork;
@@ -579,8 +580,9 @@ class DocumentPersister
      * Loads a PersistentCollection data. Used in the initialize() method.
      *
      * @param PersistentCollection $collection
+     * @param Criteria|null        $criteria
      */
-    public function loadCollection(PersistentCollection $collection)
+    public function loadCollection(PersistentCollection $collection, Criteria $criteria = null)
     {
         $mapping = $collection->getMapping();
         switch ($mapping['association']) {
@@ -593,15 +595,18 @@ class DocumentPersister
                     $this->loadReferenceManyWithRepositoryMethod($collection);
                 } else {
                     if ($mapping['isOwningSide']) {
-                        $this->loadReferenceManyCollectionOwningSide($collection);
+                        $this->loadReferenceManyCollectionOwningSide($collection, $criteria);
                     } else {
-                        $this->loadReferenceManyCollectionInverseSide($collection);
+                        $this->loadReferenceManyCollectionInverseSide($collection, $criteria);
                     }
                 }
                 break;
         }
     }
 
+    /**
+     * @param PersistentCollection $collection
+     */
     private function loadEmbedManyCollection(PersistentCollection $collection)
     {
         $embeddedDocuments = $collection->getMongoData();
@@ -625,7 +630,11 @@ class DocumentPersister
         }
     }
 
-    private function loadReferenceManyCollectionOwningSide(PersistentCollection $collection)
+    /**
+     * @param PersistentCollection $collection
+     * @param Criteria|null        $expressionCriteria
+     */
+    private function loadReferenceManyCollectionOwningSide(PersistentCollection $collection, Criteria $expressionCriteria = null)
     {
         $hints = $collection->getHints();
         $mapping = $collection->getMapping();
@@ -667,12 +676,16 @@ class DocumentPersister
         foreach ($groupedIds as $className => $ids) {
             $class = $this->dm->getClassMetadata($className);
             $mongoCollection = $this->dm->getDocumentCollection($className);
+
+            $whereExpression = $expressionCriteria->getWhereExpression();
+
             $criteria = array_merge(
                 array('_id' => array($cmd . 'in' => $ids)),
                 $this->dm->getFilterCollection()->getFilterCriteria($class),
                 isset($mapping['criteria']) ? $mapping['criteria'] : array()
             );
             $cursor = $mongoCollection->find($criteria);
+
             if (isset($mapping['sort'])) {
                 $cursor->sort($mapping['sort']);
             }
@@ -685,6 +698,18 @@ class DocumentPersister
             if (isset($hints[Query::HINT_SLAVE_OKAY])) {
                 $cursor->slaveOkay(true);
             }
+
+            if (null !== $expressionCriteria) {
+                $cursor->limit($expressionCriteria->getMaxResults())
+                       ->skip($expressionCriteria->getFirstResult());
+
+                if ($orderings = $expressionCriteria->getOrderings()) {
+                    foreach ($orderings as $ordering) {
+                        $cursor->sort($ordering);
+                    }
+                }
+            }
+
             $documents = $cursor->toArray();
             foreach ($documents as $documentData) {
                 $document = $this->uow->getById((string) $documentData['_id'], $class->rootDocumentName);
@@ -698,7 +723,11 @@ class DocumentPersister
         }
     }
 
-    private function loadReferenceManyCollectionInverseSide(PersistentCollection $collection)
+    /**
+     * @param PersistentCollection $collection
+     * @param Criteria|null        $criteria
+     */
+    private function loadReferenceManyCollectionInverseSide(PersistentCollection $collection, Criteria $criteria = null)
     {
         $hints = $collection->getHints();
         $mapping = $collection->getMapping();

@@ -30,7 +30,7 @@ use Doctrine\MongoDB\Query\Builder;
  * @author      Antoine Hedgecock <antoine@pmg.se>
  * @author      Michaël Gallego <mic.gallego@gmail.com>
  */
-class MongoExpressionVisitor extends ExpressionVisitor
+class QueryBuilderExpressionVisitor extends ExpressionVisitor
 {
     /**
      * Map Criteria API expressions to MongoDB ones

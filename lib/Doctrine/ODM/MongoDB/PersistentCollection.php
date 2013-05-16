@@ -19,6 +19,7 @@
 
 namespace Doctrine\ODM\MongoDB;
 
+use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection as BaseCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\Common\Collections\Criteria;
@@ -705,7 +706,8 @@ class PersistentCollection implements BaseCollection, Selectable
      */
     function matching(Criteria $criteria)
     {
-        if ($this->isDirty) {
+        // Embed Many are loaded into memory first
+        if ($this->isDirty || $this->mapping['association'] === ClassMetadata::EMBED_MANY) {
             $this->initialize();
         }
 
@@ -713,16 +715,8 @@ class PersistentCollection implements BaseCollection, Selectable
             return $this->coll->matching($criteria);
         }
 
-        // Reuse the repository
-        $repository = $this->dm->getRepository($this->mapping['targetDocument']);
+        $this->uow->getDocumentPersister(get_class($this->owner))->loadCollection($this, $criteria);
 
-        $builder         = Criteria::expr();
-        $ownerExpression = $builder->eq($this->backRefFieldName, $this->owner);
-        $expression      = $criteria->getWhereExpression();
-        $expression      = $expression ? $builder->andX($expression, $ownerExpression) : $ownerExpression;
-
-        $criteria->where($expression);
-
-        return $repository->matching($criteria);
+        return new ArrayCollection($this->coll->toArray());
     }
 }
