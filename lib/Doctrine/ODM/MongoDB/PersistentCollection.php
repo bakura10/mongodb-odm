@@ -259,7 +259,7 @@ class PersistentCollection implements BaseCollection, Selectable
     {
         $this->owner = $document;
         $this->mapping = $mapping;
-        $this->backRefFieldName = $mapping['inversedBy'] ?: $mapping['mappedBy'];
+        $this->backRefFieldName = $mapping['fieldName'];
     }
 
     /**
@@ -709,15 +709,19 @@ class PersistentCollection implements BaseCollection, Selectable
             $this->initialize();
         }
 
+        if ($this->initialized) {
+            return $this->coll->matching($criteria);
+        }
+
         // Reuse the repository
-        $repository = $this->dm->getRepository(get_class($this->owner));
+        $repository = $this->dm->getRepository($this->mapping['targetDocument']);
 
         $builder         = Criteria::expr();
         $ownerExpression = $builder->eq($this->backRefFieldName, $this->owner);
         $expression      = $criteria->getWhereExpression();
         $expression      = $expression ? $builder->andX($expression, $ownerExpression) : $ownerExpression;
 
-        $criteria->andWhere($expression);
+        $criteria->where($expression);
 
         return $repository->matching($criteria);
     }
