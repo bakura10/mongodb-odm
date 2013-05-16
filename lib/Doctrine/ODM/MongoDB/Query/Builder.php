@@ -74,6 +74,11 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
      */
     private $requireIndexes;
 
+    /**
+     * @param DocumentManager $dm
+     * @param \Doctrine\MongoDB\Collection $cmd
+     * @param null $documentName
+     */
     public function __construct(DocumentManager $dm, $cmd, $documentName = null)
     {
         $this->dm   = $dm;
@@ -155,6 +160,10 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
         return parent::findAndUpdate();
     }
 
+    /**
+     * @param  bool $bool
+     * @return Builder
+     */
     public function returnNew($bool = true)
     {
         $this->refresh(true);
@@ -263,7 +272,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
     /**
      * Create a new Query\Expr instance that can be used as an expression with the QueryBuilder
      *
-     * @return Query\Expr $expr
+     * @return Expr $expr
      */
     public function expr()
     {

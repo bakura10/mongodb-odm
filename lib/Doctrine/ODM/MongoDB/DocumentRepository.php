@@ -19,8 +19,14 @@
 
 namespace Doctrine\ODM\MongoDB;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Criteria;
+use Doctrine\Common\Collections\Selectable;
 use Doctrine\Common\Persistence\ObjectRepository;
+use Doctrine\Common\Util\Inflector;
+use Doctrine\ODM\MongoDB\Criteria\QueryBuilderExpressionVisitor;
 use Doctrine\ODM\MongoDB\Mapping\MappingException;
+use Doctrine\ODM\MongoDB\Query\Builder;
 
 /**
  * An DocumentRepository serves as a repository for documents with generic as well as
@@ -33,7 +39,7 @@ use Doctrine\ODM\MongoDB\Mapping\MappingException;
  * @author      Jonathan H. Wage <jonwage@gmail.com>
  * @author      Roman Borschel <roman@code-factory.org>
  */
-class DocumentRepository implements ObjectRepository
+class DocumentRepository implements ObjectRepository, Selectable
 {
     /**
      * @var string
@@ -60,7 +66,7 @@ class DocumentRepository implements ObjectRepository
      *
      * @param DocumentManager $dm The DocumentManager to use.
      * @param UnitOfWork $uow The UnitOfWork to use.
-     * @param Mapping\ClassMetadata $classMetadata The class descriptor.
+     * @param Mapping\ClassMetadata $class
      */
     public function __construct(DocumentManager $dm, UnitOfWork $uow, Mapping\ClassMetadata $class)
     {
@@ -91,11 +97,14 @@ class DocumentRepository implements ObjectRepository
     /**
      * Finds a document by its identifier
      *
-     * @throws LockException
+     *
      * @param string|object $id The identifier
      * @param int $lockMode
      * @param int $lockVersion
      * @return object The document.
+     *
+     * @throws Mapping\MappingException
+     * @throws LockException
      */
     public function find($id, $lockMode = LockMode::NONE, $lockVersion = null)
     {
@@ -151,6 +160,9 @@ class DocumentRepository implements ObjectRepository
      * Finds documents by a set of criteria.
      *
      * @param array $criteria
+     * @param array $orderBy
+     * @param null $limit
+     * @param null $offset
      * @return array
      */
     public function findBy(array $criteria, array $orderBy = null, $limit = null, $offset = null)
@@ -172,8 +184,13 @@ class DocumentRepository implements ObjectRepository
     /**
      * Adds support for magic finders.
      *
+     * @param $method
+     * @param $arguments
      * @return array|object The found document/documents.
-     * @throws BadMethodCallException  If the method called is an invalid find* method
+     *
+     * @throws MongoDBException
+     * @throws MongoDBException
+     * @throws \BadMethodCallException If the method called is an invalid find* method
      *                                 or no find* method at all and therefore an invalid
      *                                 method call.
      */
@@ -196,7 +213,7 @@ class DocumentRepository implements ObjectRepository
             throw MongoDBException::findByRequiresParameter($method.$by);
         }
 
-        $fieldName = lcfirst(\Doctrine\Common\Util\Inflector::classify($by));
+        $fieldName = lcfirst(Inflector::classify($by));
 
         if ($this->class->hasField($fieldName)) {
             return $this->$method(array($fieldName => $arguments[0]));
@@ -235,5 +252,28 @@ class DocumentRepository implements ObjectRepository
     public function getClassName()
     {
         return $this->getDocumentName();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function matching(Criteria $criteria)
+    {
+        $queryBuilder = $this->dm->createQueryBuilder($this->documentName);
+        $visitor      = new QueryBuilderExpressionVisitor($queryBuilder);
+
+        $queryBuilder = $visitor->dispatch($criteria->getWhereExpression());
+        $queryBuilder->limit($criteria->getMaxResults())
+                     ->skip($criteria->getFirstResult());
+
+        if ($orderings = $criteria->getOrderings()) {
+            foreach ($orderings as $field => $sortOrder) {
+                $queryBuilder->sort($field, $sortOrder);
+            }
+        }
+
+        // @TODO: wrap around a specialized Collection for efficient count on large collections
+
+        return new ArrayCollection($queryBuilder->getQuery()->execute()->toArray());
     }
 }

@@ -19,9 +19,12 @@
 
 namespace Doctrine\ODM\MongoDB;
 
+use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection as BaseCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\Criteria;
+use Doctrine\Common\Collections\Selectable;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\Proxy\Proxy;
 
 /**
  * A PersistentCollection represents a collection of elements that have persistent state.
@@ -30,7 +33,7 @@ use Doctrine\ODM\MongoDB\Proxy\Proxy;
  * @author      Jonathan H. Wage <jonwage@gmail.com>
  * @author      Roman Borschel <roman@code-factory.org>
  */
-class PersistentCollection implements BaseCollection
+class PersistentCollection implements BaseCollection, Selectable
 {
     /**
      * A snapshot of the collection at the moment it was fetched from the database.
@@ -40,8 +43,22 @@ class PersistentCollection implements BaseCollection
      */
     private $snapshot = array();
 
+    /**
+     * @var object
+     */
     private $owner;
 
+    /**
+     * The name of the field on the target entities that points to the owner
+     * of the collection. This is only set if the association is bi-directional.
+     *
+     * @var string
+     */
+    private $backRefFieldName;
+
+    /**
+     * @var array
+     */
     private $mapping;
 
     /**
@@ -69,14 +86,14 @@ class PersistentCollection implements BaseCollection
     /**
      * The DocumentManager that manages the persistence of the collection.
      *
-     * @var Doctrine\ODM\MongoDB\DocumentManager
+     * @var DocumentManager
      */
     private $dm;
 
     /**
      * The UnitOfWork that manages the persistence of the collection.
      *
-     * @var Doctrine\ODM\MongoDB\UnitOfWork
+     * @var UnitOfWork
      */
     private $uow;
 
@@ -111,7 +128,7 @@ class PersistentCollection implements BaseCollection
     /**
      * Sets the document manager and unit of work (used during merge operations).
      *
-     * @param type $dm
+     * @param DocumentManager $dm
      */
     public function setDocumentManager(DocumentManager $dm)
     {
@@ -237,12 +254,13 @@ class PersistentCollection implements BaseCollection
      * describes the association between the owner and the elements of the collection.
      *
      * @param object $document
-     * @param AssociationMapping $mapping
+     * @param array  $mapping
      */
     public function setOwner($document, array $mapping)
     {
         $this->owner = $document;
         $this->mapping = $mapping;
+        $this->backRefFieldName = $mapping['fieldName'];
     }
 
     /**
@@ -286,7 +304,7 @@ class PersistentCollection implements BaseCollection
     public function getDeleteDiff()
     {
         return array_udiff_assoc($this->snapshot, $this->coll->toArray(),
-                function($a, $b) {return $a === $b ? 0 : 1;});
+            function($a, $b) {return $a === $b ? 0 : 1;});
     }
 
     /**
@@ -298,7 +316,7 @@ class PersistentCollection implements BaseCollection
     public function getInsertDiff()
     {
         return array_udiff_assoc($this->coll->toArray(), $this->snapshot,
-                function($a, $b) {return $a === $b ? 0 : 1;});
+            function($a, $b) {return $a === $b ? 0 : 1;});
     }
 
     /**
@@ -676,5 +694,29 @@ class PersistentCollection implements BaseCollection
         $this->snapshot = array();
 
         $this->changed();
+    }
+
+    /**
+     * Selects all elements from a selectable that match the expression and
+     * returns a new collection containing these elements.
+     *
+     * @param Criteria $criteria
+     *
+     * @return Collection
+     */
+    function matching(Criteria $criteria)
+    {
+        // Embed Many are loaded into memory first
+        if ($this->isDirty || $this->mapping['association'] === ClassMetadata::EMBED_MANY) {
+            $this->initialize();
+        }
+
+        if ($this->initialized) {
+            return $this->coll->matching($criteria);
+        }
+
+        $this->uow->getDocumentPersister(get_class($this->owner))->loadCollection($this, $criteria);
+
+        return new ArrayCollection($this->coll->toArray());
     }
 }

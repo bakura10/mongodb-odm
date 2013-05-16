@@ -36,22 +36,23 @@ class PersistenceBuilder
     /**
      * The DocumentManager instance.
      *
-     * @var Doctrine\ODM\MongoDB\DocumentManager
+     * @var DocumentManager
      */
     private $dm;
 
     /**
      * The UnitOfWork instance.
      *
-     * @var Doctrine\ODM\MongoDB\UnitOfWork
+     * @var UnitOfWork
      */
     private $uow;
 
     /**
      * Initializes a new PersistenceBuilder instance.
      *
-     * @param Doctrine\ODM\MongoDB\DocumentManager $dm
-     * @param Doctrine\ODM\MongoDB\UnitOfWork $uow
+     * @param DocumentManager $dm
+     * @param UnitOfWork      $uow
+     * @param $cmd
      */
     public function __construct(DocumentManager $dm, UnitOfWork $uow, $cmd)
     {
