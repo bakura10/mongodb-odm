@@ -58,7 +58,7 @@ class MongoExpressionVisitor extends ExpressionVisitor
      */
     public function __construct(Builder $queryBuilder)
     {
-        $this->queryBuilder    = $queryBuilder;
+        $this->queryBuilder = $queryBuilder;
     }
 
     /**
@@ -70,11 +70,18 @@ class MongoExpressionVisitor extends ExpressionVisitor
         $field    = $comparison->getField();
         $value    = $this->dispatch($comparison->getValue());
 
-        if (isset($this->comparisonTable[$operator])) {
-            $method = $this->comparisonTable[$operator];
-            $this->queryBuilder->field($field)
-                ->{$method}($value);
+        if (!isset($this->comparisonTable[$operator])) {
+            throw new RuntimeException(sprintf(
+                'An unknown operator (%s) in a Criteria object',
+                $operator
+            ));
         }
+
+        $method = $this->comparisonTable[$operator];
+        $this->queryBuilder->field($field)
+                           ->{$method}($value);
+
+        return $this->queryBuilder;
     }
 
     /**
@@ -82,7 +89,7 @@ class MongoExpressionVisitor extends ExpressionVisitor
      */
     public function walkValue(Value $value)
     {
-        return $value;
+        return $value->getValue();
     }
 
     /**

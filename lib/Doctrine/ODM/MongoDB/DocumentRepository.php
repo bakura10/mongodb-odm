@@ -257,7 +257,6 @@ class DocumentRepository implements ObjectRepository, Selectable
 
     /**
      * {@inheritDoc}
-     * @return QueryCollection
      */
     public function matching(Criteria $criteria)
     {
@@ -268,12 +267,14 @@ class DocumentRepository implements ObjectRepository, Selectable
         $queryBuilder->limit($criteria->getMaxResults())
                      ->skip($criteria->getFirstResult());
 
-        foreach ($criteria->getOrderings() as $field => $sortOrder) {
-            $queryBuilder->sort($field, $sortOrder);
+        if ($orderings = $criteria->getOrderings()) {
+            foreach ($orderings as $field => $sortOrder) {
+                $queryBuilder->sort($field, $sortOrder);
+            }
         }
 
         // @TODO: wrap around a specialized Collection for efficient count on large collections
 
-        return new ArrayCollection($queryBuilder->getQuery()->execute());
+        return new ArrayCollection($queryBuilder->getQuery()->execute()->toArray());
     }
 }
